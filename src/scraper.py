@@ -132,6 +132,14 @@ class ACPScraper:
             return result["data"]
         return None
 
+    @staticmethod
+    def _fix_capped_agdp(gross_agdp: float, volume: float) -> float:
+        """API caps grossAgenticAmount at 99,999,999.99; fall back to volume when hit."""
+        AGDP_CAP = 99_999_999.99
+        if float(gross_agdp) >= AGDP_CAP and float(volume) > AGDP_CAP:
+            return float(volume)
+        return float(gross_agdp)
+
     def _parse_offerings(self, jobs_raw: list) -> List[Offering]:
         offerings = []
         for j in (jobs_raw or []):
@@ -214,9 +222,12 @@ class ACPScraper:
             category=CATEGORY_CN.get(raw_category, raw_category),
             description=d.get("description") or l.get("description") or "",
             volume=m.get("volume") or l.get("grossAgenticAmount", 0) or 0,
-            gross_agdp=m.get("grossAgenticAmount") or l.get("grossAgenticAmount", 0) or 0,
+            gross_agdp=self._fix_capped_agdp(
+                m.get("grossAgenticAmount") or l.get("grossAgenticAmount", 0) or 0,
+                m.get("volume") or l.get("grossAgenticAmount", 0) or 0,
+            ),
             revenue=m.get("revenue", 0) or 0,
-            success_rate=m.get("successRate") or d.get("successRate") or l.get("successRate", 0) or 0,
+            success_rate=min(max(float(m.get("successRate") or d.get("successRate") or l.get("successRate", 0) or 0), 0), 100),
             rating=l.get("rating") or d.get("rating"),
             total_jobs=m.get("successfulJobCount") or d.get("transactionCount") or l.get("transactionCount", 0) or 0,
             successful_jobs=m.get("successfulJobCount") or d.get("successfulJobCount") or l.get("successfulJobCount", 0) or 0,
